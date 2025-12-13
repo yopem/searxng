@@ -6,19 +6,61 @@ Simple single-container setup with SearXNG and Redis.
 
 ```bash
 # Build
-docker build -t searxng:latest .
+podman build -t searxng .
 
 # Run
-docker run -d -p 8080:8080 --name searxng searxng:latest
+podman run -d -p 8080:8080 --name searxng searxng
 
 # Access
 http://127.0.0.1:8080
 ```
 
-## Note
+## Examples
 
-Use `http://127.0.0.1:8080` instead of `http://localhost:8080` if localhost doesn't work (IPv6 issue).
+**Custom Port:**
+
+```bash
+podman run -d -p 3000:3000 -e SEARXNG_PORT=3000 --name searxng searxng
+```
+
+**External Redis:**
+
+```bash
+podman run -d -p 8080:8080 -e REDIS_URL=redis://host.containers.internal:6379/0 --name searxng searxng
+```
+
+**With .env file:**
+
+```bash
+podman run -d -p 8080:8080 --env-file .env --name searxng searxng
+```
+
+## Commands
+
+```bash
+# Build
+podman build -t searxng .
+
+# Run
+podman run -d -p 8080:8080 --name searxng searxng
+
+# Rebuild
+podman build -t searxng . && podman rm -f searxng && podman run -d -p 8080:8080 --name searxng searxng
+```
+
+## Environment Variables
+
+| Variable             | Default    | Description                               |
+| -------------------- | ---------- | ----------------------------------------- |
+| `SEARXNG_PORT`       | `8080`     | Port for web interface                    |
+| `REDIS_URL`          | (auto)     | Redis URL. Leave empty for internal Redis |
+| `SEARXNG_SECRET_KEY` | (optional) | Secret key                                |
+
+## Redis Behavior
+
+- No `REDIS_URL` → Uses internal Redis
+- `REDIS_URL` set → Uses external Redis (internal disabled)
 
 ## License
 
-This project is licensed under the [MIT](LICENSE.md) license.
+MIT License - see [LICENSE.md](LICENSE.md)

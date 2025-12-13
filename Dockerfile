@@ -51,51 +51,75 @@ COPY settings/limiter.toml /etc/searxng/limiter.toml
 COPY settings/uwsgi.ini /etc/searxng/uwsgi.ini
 RUN chown -R searxng:searxng /etc/searxng
 
-# Create supervisor configuration
+# Create supervisor configuration template
 RUN echo '[supervisord]\n\
-  nodaemon=true\n\
-  user=root\n\
-  logfile=/var/log/supervisor/supervisord.log\n\
-  pidfile=/var/run/supervisord.pid\n\
-  \n\
-  [program:redis]\n\
-  command=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --dir /var/lib/redis\n\
-  user=redis\n\
-  autostart=true\n\
-  autorestart=true\n\
-  stdout_logfile=/var/log/redis/redis.log\n\
-  stderr_logfile=/var/log/redis/redis.log\n\
-  priority=1\n\
-  \n\
-  [program:searxng]\n\
-  command=/usr/local/searxng/searx-pyenv/bin/uwsgi --ini /etc/searxng/uwsgi.ini --http-socket :8080\n\
-  user=searxng\n\
-  autostart=true\n\
-  autorestart=true\n\
-  stdout_logfile=/dev/stdout\n\
-  stdout_logfile_maxbytes=0\n\
-  stderr_logfile=/dev/stderr\n\
-  stderr_logfile_maxbytes=0\n\
-  priority=2\n\
-  directory=/usr/local/searxng/searxng-src' > /etc/supervisor/conf.d/searxng.conf
+nodaemon=true\n\
+user=root\n\
+logfile=/var/log/supervisor/supervisord.log\n\
+pidfile=/var/run/supervisord.pid\n\
+\n\
+[program:redis]\n\
+command=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --dir /var/lib/redis\n\
+user=redis\n\
+autostart=REDIS_AUTOSTART\n\
+autorestart=true\n\
+stdout_logfile=/var/log/redis/redis.log\n\
+stderr_logfile=/var/log/redis/redis.log\n\
+priority=1\n\
+\n\
+[program:searxng]\n\
+command=/usr/local/searxng/searx-pyenv/bin/uwsgi --ini /etc/searxng/uwsgi.ini --http-socket :8080\n\
+user=searxng\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+priority=2\n\
+directory=/usr/local/searxng/searxng-src' > /etc/supervisor/conf.d/searxng.conf.template
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
-  set -e\n\
-  \n\
-  # Substitute environment variables in settings.yml\n\
-  envsubst < /etc/searxng/settings.yml.template > /etc/searxng/settings.yml\n\
-  chown searxng:searxng /etc/searxng/settings.yml\n\
-  \n\
-  # Start supervisord\n\
-  exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf' > /entrypoint.sh && \
-  chmod +x /entrypoint.sh
+set -e\n\
+\n\
+# Set default values\n\
+export SEARXNG_PORT=${SEARXNG_PORT:-8080}\n\
+\n\
+# Check if REDIS_URL is provided by user\n\
+if [ -z "$REDIS_URL" ]; then\n\
+  # No REDIS_URL provided - use internal Redis\n\
+  echo "Using internal Redis"\n\
+  export REDIS_URL=redis://127.0.0.1:6379/0\n\
+  REDIS_AUTOSTART=true\n\
+else\n\
+  # REDIS_URL provided - check if external\n\
+  if [[ "$REDIS_URL" == *"127.0.0.1"* ]] || [[ "$REDIS_URL" == *"localhost"* ]]; then\n\
+    echo "Using internal Redis (localhost)"\n\
+    REDIS_AUTOSTART=true\n\
+  else\n\
+    echo "Using external Redis: $REDIS_URL"\n\
+    REDIS_AUTOSTART=false\n\
+  fi\n\
+fi\n\
+\n\
+# Substitute environment variables in settings.yml\n\
+envsubst < /etc/searxng/settings.yml.template > /etc/searxng/settings.yml\n\
+chown searxng:searxng /etc/searxng/settings.yml\n\
+\n\
+# Create supervisor config from template\n\
+sed "s/REDIS_AUTOSTART/$REDIS_AUTOSTART/g; s/:8080/:${SEARXNG_PORT}/g" /etc/supervisor/conf.d/searxng.conf.template > /etc/supervisor/conf.d/searxng.conf\n\
+\n\
+# Start supervisord\n\
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf' > /entrypoint.sh && \
+chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
 ENV SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
 ENV UWSGI_WORKERS=4
 ENV UWSGI_THREADS=4
+ENV SEARXNG_PORT=8080
 
 WORKDIR /usr/local/searxng/searxng-src
 
