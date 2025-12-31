@@ -6,7 +6,6 @@ general:
 search:
   autocomplete: "google"
   formats:
-    - html
     - json
 
 server:
